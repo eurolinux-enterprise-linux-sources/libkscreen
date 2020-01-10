@@ -1,0 +1,16 @@
+diff --git a/src/config.cpp b/src/config.cpp
+index 0321ba4..eecd0e2 100644
+--- a/src/config.cpp
++++ b/src/config.cpp
+@@ -69,6 +69,11 @@ bool Config::setConfig(Config* config)
+
+ bool Config::canBeApplied(Config* config)
+ {
++    if (!config) {
++        qWarning() << "canBeApplied: Config not available, returning false";
++        return false;
++    }
++
+     Config* currentConfig = BackendLoader::backend()->config();
+     QRect rect;
+     QSize outputSize;

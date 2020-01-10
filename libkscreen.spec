@@ -1,7 +1,7 @@
 Name:           libkscreen
 Epoch:          1
 Version:        1.0.1
-Release:        6%{?dist}
+Release:        8%{?dist}
 Summary:        Display configuration library
 
 License:        GPLv2+
@@ -11,6 +11,8 @@ Source0:        http://download.kde.org/stable/libkscreen/libkscreen-%{version}.
 
 Patch0:         libkscreen-bz#1056251-check-max-active-screens-count.patch
 Patch1:         libkscreen-bz#1082654-crash-when-disabling-output.patch
+Patch2:         libkscreen-bz#1361220-do-not-crash-on-empty-config.patch
+Patch3:         libkscreen-bz#1267281-do-not-crash-when-changing-resolution.patch
 
 BuildRequires:  kdelibs4-devel
 BuildRequires:  libXrandr-devel
@@ -34,11 +36,13 @@ developing applications that use %{name}.
 
 %patch0 -p1 -b .bz1056251
 %patch1 -p1 -b .bz1082654
+%patch2 -p1 -b .bz1361220
+%patch3 -p1 -b .bz#1267281
 
 %build
 mkdir -p %{_target_platform}
 pushd %{_target_platform}
-%{cmake_kde4} .. 
+%{cmake_kde4} ..
 popd
 
 make %{?_smp_mflags} -C %{_target_platform}
@@ -66,6 +70,14 @@ make install/fast DESTDIR=%{buildroot} -C %{_target_platform}
 
 
 %changelog
+* Mon Sep 11 2017 Jan Grulich <jgrulich@redhat.com> - 1:1.0.1-8
+- Fix crash when changing resolution
+  Resolves: bz#1267281
+
+* Mon Sep 11 2017 Jan Grulich <jgrulich@redhat.com> - 1:1.0.1-7
+- Fix crash when trying to apply empty configuration
+  Resolves: bz#1361220
+
 * Tue Apr 01 2014 Daniel Vrátil <dvratil@redhat.com> - 1:1.0.1-5
 - Fix crash when disabling output (resolves #1082654)
 
@@ -90,7 +102,7 @@ make install/fast DESTDIR=%{buildroot} -C %{_target_platform}
 * Thu May 02 2013 Dan Vrátil <dvratil@redhat.com> - 1:0.0.92-1
  - libkscreen 0.0.92
 
-* Thu Apr 23 2013 Dan Vrátil <dvratil@redhat.com> - 1:0.0.82.git20130423-1
+* Tue Apr 23 2013 Dan Vrátil <dvratil@redhat.com> - 1:0.0.82.git20130423-1
  - dev git build
 
 * Wed Mar 27 2013 Dan Vrátil <dvratil@redhat.com> - 1:0.0.81-1
@@ -101,11 +113,11 @@ make install/fast DESTDIR=%{buildroot} -C %{_target_platform}
 
 * Sun Jan 20 2013 Dan Vrátil <dvratil@redhat.com> 1:0.0.71-2
  - fix dependency of libkscreen-devel
- 
+
 * Sun Jan 20 2013 Dan Vrátil <dvratil@redhat.com> 1:0.0.71-1
  - update to 0.0.71 - first official release
  - remove kscreen-console, it's now shipped in kscreen package
- 
+
 * Wed Jan 09 2013 Rex Dieter <rdieter@fedoraproject.org> 0.9.0-2.20121228git
 - remove redundant BR's
 - BR: qjson-devel >= 0.8.1
