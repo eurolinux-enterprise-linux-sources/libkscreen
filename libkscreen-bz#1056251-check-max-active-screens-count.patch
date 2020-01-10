@@ -1,0 +1,340 @@
+diff --git a/backends/fake/parser.cpp b/backends/fake/parser.cpp
+index 287a3a4..85b98e9 100644
+--- a/backends/fake/parser.cpp
++++ b/backends/fake/parser.cpp
+@@ -69,6 +69,7 @@ Screen* Parser::screenFromJson(const QMap< QString, QVariant >& data)
+     screen->setMinSize(Parser::sizeFromJson(data["minSize"].toMap()));
+     screen->setMaxSize(Parser::sizeFromJson(data["maxSize"].toMap()));
+     screen->setCurrentSize(Parser::sizeFromJson(data["currentSize"].toMap()));
++    screen->setMaxActiveOutputsCount(data["maxActiveOutputsCount"].toInt());
+ 
+     return screen;
+ }
+diff --git a/backends/xrandr/xrandrscreen.cpp b/backends/xrandr/xrandrscreen.cpp
+index 010edd1..3b3b7c5 100644
+--- a/backends/xrandr/xrandrscreen.cpp
++++ b/backends/xrandr/xrandrscreen.cpp
+@@ -61,6 +61,7 @@ KScreen::Screen *XRandRScreen::toKScreenScreen(KScreen::Config *parent) const
+     kscreenScreen->setMaxSize(m_maxSize);
+     kscreenScreen->setMinSize(m_minSize);
+     kscreenScreen->setCurrentSize(m_currentSize);
++    kscreenScreen->setMaxActiveOutputsCount(XRandR::screenResources()->ncrtc);
+ 
+     return kscreenScreen;
+ }
+diff --git a/backends/xrandr1.1/xrandr11.cpp b/backends/xrandr1.1/xrandr11.cpp
+index b23d60a..43be8d0 100644
+--- a/backends/xrandr1.1/xrandr11.cpp
++++ b/backends/xrandr1.1/xrandr11.cpp
+@@ -92,6 +92,7 @@ KScreen::Config* XRandR11::config() const
+     screen->setCurrentSize(QSize(xcbScreen->width_in_pixels, xcbScreen->height_in_pixels));
+     screen->setMaxSize(QSize(size->max_width, size->max_height));
+     screen->setMinSize(QSize(size->min_width, size->min_height));
++    screen->setMaxActiveOutputsCount(1);
+ 
+     config->setScreen(screen);
+ 
+diff --git a/src/config.cpp b/src/config.cpp
+index 0321ba4..a952240 100644
+--- a/src/config.cpp
++++ b/src/config.cpp
+@@ -74,11 +74,14 @@ bool Config::canBeApplied(Config* config)
+     QSize outputSize;
+     Output* currentOutput = 0;
+     OutputList outputs = config->outputs();
++    int enabledOutputsCount = 0;
+     Q_FOREACH(Output *output, outputs) {
+         if (!output->isEnabled()) {
+             continue;
+         }
+ 
++        ++enabledOutputsCount;
++
+         currentOutput = currentConfig->output(output->id());
+         //If there is no such output
+         if (!currentOutput) {
+@@ -132,6 +135,12 @@ bool Config::canBeApplied(Config* config)
+         }
+     }
+ 
++    const int maxEnabledOutputsCount = config->screen()->maxActiveOutputsCount();
++    if (enabledOutputsCount > maxEnabledOutputsCount) {
++        qDebug() << "Too many active screens. Requested: " << enabledOutputsCount << ", Max: " << maxEnabledOutputsCount;
++        return false;
++    }
++
+     if (rect.width() > config->screen()->maxSize().width()) {
+         qWarning() << "The configuration has too much width:" << rect.width();
+         return false;
+diff --git a/src/screen.cpp b/src/screen.cpp
+index a9363cb..e7da8d9 100644
+--- a/src/screen.cpp
++++ b/src/screen.cpp
+@@ -24,10 +24,12 @@ class Screen::Private
+ {
+   public:
+     Private():
+-      id(0)
++      id(0),
++      maxActiveOutputsCount(0)
+     { }
+ 
+     int id;
++    int maxActiveOutputsCount;
+     QSize currentSize;
+     QSize minSize;
+     QSize maxSize;
+@@ -90,6 +92,16 @@ void Screen::setMinSize(const QSize& minSize)
+     d->minSize = minSize;
+ }
+ 
++int Screen::maxActiveOutputsCount() const
++{
++    return d->maxActiveOutputsCount;
++}
++
++void Screen::setMaxActiveOutputsCount(int maxActiveOutputsCount)
++{
++    d->maxActiveOutputsCount = maxActiveOutputsCount;
++}
++
+ } //KScreen namespace
+ 
+ #include "screen.moc"
+diff --git a/src/screen.h b/src/screen.h
+index ecfab69..daa0802 100644
+--- a/src/screen.h
++++ b/src/screen.h
+@@ -35,6 +35,7 @@ class KSCREEN_EXPORT Screen : public QObject
+         Q_PROPERTY(QSize currentSize READ currentSize WRITE setCurrentSize NOTIFY currentSizeChanged)
+         Q_PROPERTY(QSize minSize READ minSize CONSTANT)
+         Q_PROPERTY(QSize maxSize READ maxSize CONSTANT)
++        Q_PROPERTY(int maxActiveOutputsCount READ maxActiveOutputsCount CONSTANT)
+ 
+         explicit Screen(QObject *parent = 0);
+         virtual ~Screen();
+@@ -51,6 +52,9 @@ class KSCREEN_EXPORT Screen : public QObject
+         QSize maxSize() const;
+         void setMaxSize(const QSize& maxSize);
+ 
++        int maxActiveOutputsCount() const;
++        void setMaxActiveOutputsCount(int maxActiveOutputsCount);
++
+     Q_SIGNALS:
+         void currentSizeChanged();
+ 
+diff --git a/tests/configs/multipleclone.json b/tests/configs/multipleclone.json
+index 12ef4c0..43bd3b5 100644
+--- a/tests/configs/multipleclone.json
++++ b/tests/configs/multipleclone.json
+@@ -13,7 +13,8 @@
+         "currentSize" : {
+             "width" : 1024,
+             "height" : 768
+-        }
++        },
++        "maxActiveOutputsCount": 2
+     },
+     "outputs" :
+     [
+@@ -120,4 +121,4 @@
+             "edid" : "AP///////wAQrBbwTExLQQ4WAQOANCB46h7Frk80sSYOUFSlSwCBgKlA0QBxTwEBAQEBAQEBKDyAoHCwI0AwIDYABkQhAAAaAAAA/wBGNTI1TTI0NUFLTEwKAAAA/ABERUxMIFUyNDEwCiAgAAAA/QA4TB5REQAKICAgICAgAToCAynxUJAFBAMCBxYBHxITFCAVEQYjCQcHZwMMABAAOC2DAQAA4wUDAQI6gBhxOC1AWCxFAAZEIQAAHgEdgBhxHBYgWCwlAAZEIQAAngEdAHJR0B4gbihVAAZEIQAAHowK0Iog4C0QED6WAAZEIQAAGAAAAAAAAAAAAAAAAAAAPg=="
+         }
+     ]
+-}
+\ No newline at end of file
++}
+diff --git a/tests/configs/multipleoutput.json b/tests/configs/multipleoutput.json
+index 2b4a8d6..4e59b5f 100644
+--- a/tests/configs/multipleoutput.json
++++ b/tests/configs/multipleoutput.json
+@@ -13,7 +13,8 @@
+         "currentSize" : {
+             "width" : 3200,
+             "height" : 1880
+-        }
++        },
++        "maxActiveOutputsCount": 2
+     },
+     "outputs" :
+     [
+@@ -119,4 +120,4 @@
+             "edid" : "AP///////wAQrBbwTExLQQ4WAQOANCB46h7Frk80sSYOUFSlSwCBgKlA0QBxTwEBAQEBAQEBKDyAoHCwI0AwIDYABkQhAAAaAAAA/wBGNTI1TTI0NUFLTEwKAAAA/ABERUxMIFUyNDEwCiAgAAAA/QA4TB5REQAKICAgICAgAToCAynxUJAFBAMCBxYBHxITFCAVEQYjCQcHZwMMABAAOC2DAQAA4wUDAQI6gBhxOC1AWCxFAAZEIQAAHgEdgBhxHBYgWCwlAAZEIQAAngEdAHJR0B4gbihVAAZEIQAAHowK0Iog4C0QED6WAAZEIQAAGAAAAAAAAAAAAAAAAAAAPg=="
+         }
+     ]
+-}
+\ No newline at end of file
++}
+diff --git a/tests/configs/singleOutputWithoutPreferred.json b/tests/configs/singleOutputWithoutPreferred.json
+index 4e39647..e6bbc1d 100644
+--- a/tests/configs/singleOutputWithoutPreferred.json
++++ b/tests/configs/singleOutputWithoutPreferred.json
+@@ -13,7 +13,8 @@
+         "currentSize" : {
+             "width" : 1280,
+             "height" : 800
+-        }
++        },
++        "maxActiveOutputsCount": 2
+     },
+     "outputs" :
+     [
+@@ -64,4 +65,4 @@
+         "edid" : "AP///////wBMLcMFMzJGRQkUAQMOMx14Ku6Ro1RMmSYPUFQjCACBAIFAgYCVAKlAswABAQEBAjqAGHE4LUBYLEUA/h8RAAAeAAAA/QA4PB5REQAKICAgICAgAAAA/ABTeW5jTWFzdGVyCiAgAAAA/wBIOU1aMzAyMTk2CiAgAC4="
+     }
+     ]
+-}
+\ No newline at end of file
++}
+diff --git a/tests/configs/singleoutput.json b/tests/configs/singleoutput.json
+index da5d08f..bab8926 100644
+--- a/tests/configs/singleoutput.json
++++ b/tests/configs/singleoutput.json
+@@ -13,7 +13,8 @@
+         "currentSize" : {
+             "width" : 1280,
+             "height" : 800
+-        }
++        },
++        "maxActiveOutputsCount": 2
+     },
+     "outputs" :
+     [
+@@ -64,4 +65,4 @@
+             "edid" : "AP///////wBMLcMFMzJGRQkUAQMOMx14Ku6Ro1RMmSYPUFQjCACBAIFAgYCVAKlAswABAQEBAjqAGHE4LUBYLEUA/h8RAAAeAAAA/QA4PB5REQAKICAgICAgAAAA/ABTeW5jTWFzdGVyCiAgAAAA/wBIOU1aMzAyMTk2CiAgAC4="
+         }
+     ]
+-}
+\ No newline at end of file
++}
+diff --git a/tests/configs/singleoutputBroken.json b/tests/configs/singleoutputBroken.json
+index e3d88cb..3c4e0db 100644
+--- a/tests/configs/singleoutputBroken.json
++++ b/tests/configs/singleoutputBroken.json
+@@ -13,7 +13,8 @@
+         "currentSize" : {
+             "width" : 1280,
+             "height" : 800
+-        }
++        },
++        "maxActiveOutputsCount": 2
+     },
+     "outputs" :
+     [
+@@ -72,4 +73,4 @@
+         "edid" : "AP///////wBMLcMFMzJGRQkUAQMOMx14Ku6Ro1RMmSYPUFQjCACBAIFAgYCVAKlAswABAQEBAjqAGHE4LUBYLEUA/h8RAAAeAAAA/QA4PB5REQAKICAgICAgAAAA/ABTeW5jTWFzdGVyCiAgAAAA/wBIOU1aMzAyMTk2CiAgAC4="
+     }
+     ]
+-}
+\ No newline at end of file
++}
+diff --git a/tests/configs/tooManyOutputs.json b/tests/configs/tooManyOutputs.json
+new file mode 100644
+index 0000000..91799cc
+--- /dev/null
++++ b/tests/configs/tooManyOutputs.json
+@@ -0,0 +1,78 @@
++{
++    "screen" :
++    {
++        "id" : 1,
++        "maxSize" : {
++            "width" : 8192,
++            "height" : 8192
++        },
++        "minSize" : {
++            "width" : 320,
++            "height" : 200
++        },
++        "currentSize" : {
++            "width" : 3200,
++            "height" : 1880
++        },
++        "maxActiveOutputsCount": 1
++    },
++    "outputs" :
++    [
++        {
++            "id" : 1,
++            "name" : "LVDS1",
++            "type" : "LVDS",
++            "modes" :
++            [
++                {
++                    "id" : 3,
++                    "name" : "1280x800",
++                    "refreshRate" : 59.9,
++                    "size" : {
++                        "width" : 1280,
++                        "height" : 800
++                    }
++                }
++            ],
++            "pos" : {
++                "x" : 0,
++                "y" : 0
++            },
++            "currentModeId" : 3,
++            "preferredModes" : [3],
++            "rotation" : 1,
++            "connected" : true,
++            "enabled" : true,
++            "primary" : true,
++            "edid" : "AP///////wBMLcMFMzJGRQkUAQMOMx14Ku6Ro1RMmSYPUFQjCACBAIFAgYCVAKlAswABAQEBAjqAGHE4LUBYLEUA/h8RAAAeAAAA/QA4PB5REQAKICAgICAgAAAA/ABTeW5jTWFzdGVyCiAgAAAA/wBIOU1aMzAyMTk2CiAgAC4="
++        },
++        {
++            "id" : 2,
++            "name" : "HDMI1",
++            "type" : "HDMI",
++            "modes" :
++            [
++                {
++                    "id" : 4,
++                    "name" : "1920x1080",
++                    "refreshRate" : 60,
++                    "size" : {
++                        "width" : 1920,
++                        "height" : 1080
++                    }
++                }
++            ],
++            "pos" : {
++                "x" : 1280,
++                "y" : 0
++            },
++            "currentModeId" : 4,
++            "preferredModes" : [4],
++            "rotation" : 1,
++            "connected" : true,
++            "enabled" : true,
++            "primary" : false,
++            "edid" : "AP///////wAQrBbwTExLQQ4WAQOANCB46h7Frk80sSYOUFSlSwCBgKlA0QBxTwEBAQEBAQEBKDyAoHCwI0AwIDYABkQhAAAaAAAA/wBGNTI1TTI0NUFLTEwKAAAA/ABERUxMIFUyNDEwCiAgAAAA/QA4TB5REQAKICAgICAgAToCAynxUJAFBAMCBxYBHxITFCAVEQYjCQcHZwMMABAAOC2DAQAA4wUDAQI6gBhxOC1AWCxFAAZEIQAAHgEdgBhxHBYgWCwlAAZEIQAAngEdAHJR0B4gbihVAAZEIQAAHowK0Iog4C0QED6WAAZEIQAAGAAAAAAAAAAAAAAAAAAAPg=="
++        }
++    ]
++}
+diff --git a/tests/testscreenconfig.cpp b/tests/testscreenconfig.cpp
+index 0adbd2a..984fde8 100644
+--- a/tests/testscreenconfig.cpp
++++ b/tests/testscreenconfig.cpp
+@@ -181,6 +181,21 @@ void testScreenConfig::configCanBeApplied()
+     QVERIFY(!Config::canBeApplied(brokenConfig));
+     primaryBroken->mode(QLatin1String("3"))->setSize(QSize(1280, 800));
+     QVERIFY(Config::canBeApplied(brokenConfig));
++
++
++    path = TEST_DATA;
++    path.append("/tooManyOutputs.json");
++    setenv("TEST_DATA", path, 1);
++    brokenConfig = Config::current();
++
++    int enabledOutputsCount = 0;
++    Q_FOREACH (Output *output, brokenConfig->outputs()) {
++        if (output->isEnabled()) {
++            ++enabledOutputsCount;
++        }
++    }
++    QVERIFY(brokenConfig->screen()->maxActiveOutputsCount() < enabledOutputsCount);
++    QVERIFY(!Config::canBeApplied(brokenConfig));
+ }
+ 
+ QTEST_MAIN(testScreenConfig)

@@ -1,13 +1,16 @@
 Name:           libkscreen
 Epoch:          1
 Version:        1.0.1
-Release:        2%{?dist}
+Release:        6%{?dist}
 Summary:        Display configuration library
 
 License:        GPLv2+
 URL:            https://projects.kde.org/projects/playground/libs/libkscreen
 
 Source0:        http://download.kde.org/stable/libkscreen/libkscreen-%{version}.tar.bz2
+
+Patch0:         libkscreen-bz#1056251-check-max-active-screens-count.patch
+Patch1:         libkscreen-bz#1082654-crash-when-disabling-output.patch
 
 BuildRequires:  kdelibs4-devel
 BuildRequires:  libXrandr-devel
@@ -28,6 +31,9 @@ developing applications that use %{name}.
 
 %prep
 %setup -q
+
+%patch0 -p1 -b .bz1056251
+%patch1 -p1 -b .bz1082654
 
 %build
 mkdir -p %{_target_platform}
@@ -60,6 +66,18 @@ make install/fast DESTDIR=%{buildroot} -C %{_target_platform}
 
 
 %changelog
+* Tue Apr 01 2014 Daniel Vrátil <dvratil@redhat.com> - 1:1.0.1-5
+- Fix crash when disabling output (resolves #1082654)
+
+* Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 1:1.0.1-5
+- Mass rebuild 2014-01-24
+
+* Thu Jan 23 2014 Daniel Vrátil <dvratil@redhat.com> - 1:1.0.1-4
+- Backport patch for RHBZ#1056251 from upstream
+
+* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 1:1.0.1-3
+- Mass rebuild 2013-12-27
+
 * Fri Aug 09 2013 Dan Vrátil <dvratil@redhat.com> - 1:1.0.1-2
  - fix Source0 URL
 
